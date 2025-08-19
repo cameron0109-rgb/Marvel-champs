@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Marvel Champions Test App</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f4f9; }
+    header { background: #222; color: #fff; padding: 10px; text-align: center; }
+    .container { display: flex; justify-content: space-around; padding: 10px; }
+    .panel { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 10px; width: 45%; }
+    h2 { margin-top: 0; }
+    .card { border: 1px solid #666; border-radius: 6px; padding: 5px; margin: 5px 0; background: #fafafa; }
+    .card button { margin-left: 5px; }
+    .area { margin: 10px 0; }
+    #log { background: #111; color: #0f0; font-size: 12px; padding: 5px; height: 150px; overflow-y: auto; border-radius: 5px; }
+    .button { padding: 6px 12px; margin: 4px; border: none; border-radius: 5px; cursor: pointer; }
+    .hero-btn { background: #3498db; color: white; }
+    .villain-btn { background: #e74c3c; color: white; }
+    .toggle { background: #2ecc71; color: white; }
+    .exhausted { opacity: 0.6; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Marvel Champions LCG Test (Spider-Man vs Rhino)</h1>
+</header>
+
+<div class="container">
+  <!-- Hero Panel -->
+  <div class="panel" id="heroPanel">
+    <h2>Hero Area</h2>
+    <p><strong>Name:</strong> <span id="heroName">Spider-Man</span> (<span id="formState">Hero</span>)</p>
+    <p><strong>HP:</strong> <span id="heroHP">10</span></p>
+    <p><strong>Ability:</strong> <span id="heroAbility">Spider-Sense: Response - After the villain initiates an attack against you, draw 1 card.</span></p>
+    <p>
+      <button class="button toggle" onclick="toggleForm()">Toggle Hero/Alter-Ego</button>
+      <button class="button hero-btn" onclick="toggleExhaust()">Exhaust/Ready</button>
+    </p>
+
+    <div class="area">
+      <h3>Hand (<span id="handSize">0</span>)</h3>
+      <div id="heroHand"></div>
+    </div>
+
+    <div class="area">
+      <h3>Deck</h3>
+      <button class="button hero-btn" onclick="drawHeroCard()">Draw Card</button>
+      (<span id="heroDeckCount"></span> left)
+      <h3>Discard</h3>
+      <div id="heroDiscard"></div>
+    </div>
+
+    <div class="area">
+      <button class="button hero-btn" onclick="endHeroTurn()">End Hero Turn</button>
+    </div>
+  </div>
+
+  <!-- Villain Panel -->
+  <div class="panel" id="villainPanel">
+    <h2>Villain Area</h2>
+    <p><strong>Name:</strong> Rhino</p>
+    <p><strong>HP:</strong> <span id="villainHP">14</span></p>
+    <div class="area">
+      <h3>Main Scheme</h3>
+      <p><span id="schemeName">Breakin' & Takin'</span></p>
+      <p>Threat: <span id="schemeThreat">0</span> / <span id="schemeMax">7</span></p>
+    </div>
+
+    <div class="area">
+      <h3>Minions</h3>
+      <div id="minionArea"></div>
+    </div>
+
+    <div class="area">
+      <h3>Villain Deck</h3>
+      (<span id="villainDeckCount"></span> left)
+      <h3>Discard</h3>
+      <div id="villainDiscard"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin: 10px;">
+  <h2>Game Log</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+// Simplified decks (full decks can be slotted later)
+let heroDeck = [
+  {name:"Web-Shooter", cost:1, type:"Upgrade"},
+  {name:"Swinging Web Kick", cost:3, type:"Event", effect:"Deal 8 damage"},
+  {name:"Backflip", cost:0, type:"Event", effect:"Prevent all damage"},
+  {name:"Spider-Tracer", cost:1, type:"Upgrade"},
+  {name:"Enhanced Reflexes", cost:1, type:"Resource"},
+];
+let heroHand = [];
+let heroDiscard = [];
+let villainDeck = [
+  {name:"Stampede", type:"Treachery", effect:"Rhino attacks you"},
+  {name:"Hydra Mercenary", type:"Minion", hp:3, atk:2},
+  {name:"Gang-Up", type:"Treachery", effect:"Villain + each minion attacks"},
+  {name:"Advance", type:"Treachery", effect:"Villain schemes"},
+  {name:"Hydra Bomber", type:"Minion", hp:2, atk:1},
+];
+let villainDiscard = [];
+let heroHP = 10;
+let villainHP = 14;
+let schemeThreat = 0;
+let schemeMax = 7;
+let heroForm = "Hero";
+let heroExhausted = false;
+
+function updateUI(){
+  document.getElementById("heroHP").innerText = heroHP;
+  document.getElementById("villainHP").innerText = villainHP;
+  document.getElementById("schemeThreat").innerText = schemeThreat;
+  document.getElementById("schemeMax").innerText = schemeMax;
+  document.getElementById("formState").innerText = heroForm;
+  document.getElementById("heroDeckCount").innerText = heroDeck.length;
+  document.getElementById("villainDeckCount").innerText = villainDeck.length;
+  document.getElementById("handSize").innerText = heroHand.length;
+
+  let handHTML = "";
+  heroHand.forEach((c, i)=>{
+    handHTML += `<div class="card ${heroExhausted ? 'exhausted' : ''}"><b>${c.name}</b> (Cost: ${c.cost||0}) 
+                 <button onclick="playCard(${i})">Play</button>
+                 <button onclick="discardCard(${i})">Discard</button></div>`;
+  });
+  document.getElementById("heroHand").innerHTML = handHTML;
+
+  let discardHTML = heroDiscard.map(c=>`<div class="card">${c.name}</div>`).join("");
+  document.getElementById("heroDiscard").innerHTML = discardHTML;
+
+  let vDiscardHTML = villainDiscard.map(c=>`<div class="card">${c.name}</div>`).join("");
+  document.getElementById("villainDiscard").innerHTML = vDiscardHTML;
+}
+
+function log(msg){ document.getElementById("log").innerHTML += msg+"<br>"; }
+
+function drawHeroCard(){
+  if(heroDeck.length===0){ log("Hero deck empty, reshuffle discard"); heroDeck=heroDiscard; heroDiscard=[]; }
+  let c = heroDeck.shift();
+  heroHand.push(c);
+  updateUI();
+}
+
+function playCard(i){
+  let card = heroHand.splice(i,1)[0];
+  if(card.type==="Event"){ 
+    log("Played "+card.name+": "+card.effect);
+    if(card.effect && card.effect.includes("Deal 8 damage")){ villainHP -= 8; }
+  }
+  heroDiscard.push(card);
+  updateUI();
+}
+
+function discardCard(i){
+  let card = heroHand.splice(i,1)[0];
+  log("Discarded "+card.name+" for 1 resource.");
+  heroDiscard.push(card);
+  updateUI();
+}
+
+function toggleForm(){ heroForm = heroForm==="Hero"?"Alter-Ego":"Hero"; updateUI(); }
+function toggleExhaust(){ heroExhausted = !heroExhausted; updateUI(); }
+
+function endHeroTurn(){ log("Hero turn ended."); villainPhase(); }
+
+function villainPhase(){
+  log("Villain Phase begins.");
+  if(heroForm==="Hero"){
+    let atk = 2 + Math.floor(Math.random()*2); // simulate boost
+    heroHP -= atk;
+    log("Rhino attacks for "+atk+" damage!");
+  } else {
+    let tht = 1 + Math.floor(Math.random()*2);
+    schemeThreat += tht;
+    log("Rhino schemes for "+tht+" threat.");
+    if(schemeThreat >= schemeMax){ log("Scheme complete! Game Over!"); }
+  }
+  if(villainDeck.length===0){ villainDeck=villainDiscard; villainDiscard=[]; }
+  let encounter = villainDeck.shift();
+  log("Encounter drawn: "+encounter.name);
+  if(encounter.type==="Minion"){ document.getElementById("minionArea").innerHTML += `<div class="card">${encounter.name} (HP:${encounter.hp}, ATK:${encounter.atk})</div>`; }
+  villainDiscard.push(encounter);
+  updateUI();
+}
+
+updateUI();
+</script>
+</body>
+</html>
